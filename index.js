@@ -109,6 +109,74 @@ class GitHubServersSearchServer {
             required: ['server_name', 'github_url'],
           },
         },
+        {
+          name: 'uninstall_mcp_server',
+          description: 'Remove an MCP server from the mcp-config.json file.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              server_name: {
+                type: 'string',
+                description: 'The name of the server to uninstall (as it appears in the config)',
+              },
+            },
+            required: ['server_name'],
+          },
+        },
+        {
+          name: 'list_installed_servers',
+          description: 'List all currently installed MCP servers from your mcp-config.json file.',
+          inputSchema: {
+            type: 'object',
+            properties: {},
+          },
+        },
+        {
+          name: 'update_server_config',
+          description: 'Update the configuration of an existing MCP server (args, tools, environment).',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              server_name: {
+                type: 'string',
+                description: 'The name of the server to update',
+              },
+              new_args: {
+                type: 'array',
+                description: 'New command arguments (optional)',
+                items: { type: 'string' },
+              },
+              new_tools: {
+                type: 'array',
+                description: 'New tools array (optional)',
+                items: { type: 'string' },
+              },
+            },
+            required: ['server_name'],
+          },
+        },
+        {
+          name: 'get_server_details',
+          description: 'Get detailed information about an MCP server from GitHub (stars, last updated, README, etc.).',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              github_url: {
+                type: 'string',
+                description: 'The GitHub URL of the server',
+              },
+            },
+            required: ['github_url'],
+          },
+        },
+        {
+          name: 'backup_config',
+          description: 'Create a timestamped backup of your mcp-config.json file.',
+          inputSchema: {
+            type: 'object',
+            properties: {},
+          },
+        },
       ],
     }));
 
@@ -119,6 +187,16 @@ class GitHubServersSearchServer {
         return await this.handleList(request.params.arguments);
       } else if (request.params.name === 'install_mcp_server') {
         return await this.handleInstall(request.params.arguments);
+      } else if (request.params.name === 'uninstall_mcp_server') {
+        return await this.handleUninstall(request.params.arguments);
+      } else if (request.params.name === 'list_installed_servers') {
+        return await this.handleListInstalled(request.params.arguments);
+      } else if (request.params.name === 'update_server_config') {
+        return await this.handleUpdateConfig(request.params.arguments);
+      } else if (request.params.name === 'get_server_details') {
+        return await this.handleGetDetails(request.params.arguments);
+      } else if (request.params.name === 'backup_config') {
+        return await this.handleBackup(request.params.arguments);
       }
       throw new Error(`Unknown tool: ${request.params.name}`);
     });
@@ -357,6 +435,311 @@ class GitHubServersSearchServer {
               server_config: serverConfig,
               note: 'You may need to restart your CLI client for changes to take effect',
               github: `${owner}/${repo}`,
+            }, null, 2),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              success: false,
+              error: error.message,
+              config_path: configPath,
+            }, null, 2),
+          },
+        ],
+      };
+    }
+  }
+
+  async handleUninstall(args) {
+    const { server_name } = args;
+    const configPath = process.env.USERPROFILE + '\\.copilot\\mcp-config.json';
+    const fs = await import('fs/promises');
+    
+    try {
+      // Read existing config
+      const configData = await fs.readFile(configPath, 'utf-8');
+      const config = JSON.parse(configData);
+      
+      // Check if server exists
+      if (!config.mcpServers || !config.mcpServers[server_name]) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                success: false,
+                error: `Server "${server_name}" not found in config`,
+                available_servers: Object.keys(config.mcpServers || {}),
+              }, null, 2),
+            },
+          ],
+        };
+      }
+      
+      // Save removed config for reference
+      const removedConfig = config.mcpServers[server_name];
+      
+      // Remove server
+      delete config.mcpServers[server_name];
+      
+      // Remove from alwaysAllow if present
+      if (config.alwaysAllow) {
+        config.alwaysAllow = config.alwaysAllow.filter(
+          item => item.server !== server_name
+        );
+      }
+      
+      // Write config back
+      await fs.writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
+      
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              success: true,
+              message: `Successfully uninstalled "${server_name}"`,
+              removed_config: removedConfig,
+              config_path: configPath,
+              note: 'You may need to restart your CLI client for changes to take effect',
+            }, null, 2),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              success: false,
+              error: error.message,
+              config_path: configPath,
+            }, null, 2),
+          },
+        ],
+      };
+    }
+  }
+
+  async handleListInstalled(args) {
+    const configPath = process.env.USERPROFILE + '\\.copilot\\mcp-config.json';
+    const fs = await import('fs/promises');
+    
+    try {
+      const configData = await fs.readFile(configPath, 'utf-8');
+      const config = JSON.parse(configData);
+      
+      const servers = config.mcpServers || {};
+      const serverList = Object.entries(servers).map(([name, serverConfig]) => ({
+        name,
+        type: serverConfig.type,
+        command: serverConfig.command,
+        args: serverConfig.args,
+        tools: serverConfig.tools || [],
+        env: serverConfig.env || {},
+      }));
+      
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              total_installed: serverList.length,
+              config_path: configPath,
+              servers: serverList,
+              alwaysAllow: config.alwaysAllow || [],
+            }, null, 2),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              success: false,
+              error: error.message,
+              config_path: configPath,
+            }, null, 2),
+          },
+        ],
+      };
+    }
+  }
+
+  async handleUpdateConfig(args) {
+    const { server_name, new_args, new_tools } = args;
+    const configPath = process.env.USERPROFILE + '\\.copilot\\mcp-config.json';
+    const fs = await import('fs/promises');
+    
+    try {
+      const configData = await fs.readFile(configPath, 'utf-8');
+      const config = JSON.parse(configData);
+      
+      // Check if server exists
+      if (!config.mcpServers || !config.mcpServers[server_name]) {
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                success: false,
+                error: `Server "${server_name}" not found in config`,
+                available_servers: Object.keys(config.mcpServers || {}),
+              }, null, 2),
+            },
+          ],
+        };
+      }
+      
+      const oldConfig = { ...config.mcpServers[server_name] };
+      
+      // Update fields if provided
+      if (new_args) {
+        config.mcpServers[server_name].args = new_args;
+      }
+      if (new_tools !== undefined) {
+        config.mcpServers[server_name].tools = new_tools;
+      }
+      
+      // Write config back
+      await fs.writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
+      
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              success: true,
+              message: `Successfully updated "${server_name}"`,
+              old_config: oldConfig,
+              new_config: config.mcpServers[server_name],
+              config_path: configPath,
+              note: 'You may need to restart your CLI client for changes to take effect',
+            }, null, 2),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              success: false,
+              error: error.message,
+              config_path: configPath,
+            }, null, 2),
+          },
+        ],
+      };
+    }
+  }
+
+  async handleGetDetails(args) {
+    const { github_url } = args;
+    
+    try {
+      // Extract owner and repo from GitHub URL
+      const githubMatch = github_url.match(/github\.com\/([^/]+)\/([^/]+)/);
+      if (!githubMatch) {
+        throw new Error('Invalid GitHub URL format');
+      }
+      
+      const [, owner, repo] = githubMatch;
+      const cleanRepo = repo.replace(/\.git$/, '');
+      
+      // Fetch repo details from GitHub API
+      const repoResponse = await fetch(`https://api.github.com/repos/${owner}/${cleanRepo}`);
+      if (!repoResponse.ok) {
+        throw new Error(`Failed to fetch repo details: ${repoResponse.statusText}`);
+      }
+      const repoData = await repoResponse.json();
+      
+      // Fetch README
+      const readmeResponse = await fetch(`https://raw.githubusercontent.com/${owner}/${cleanRepo}/main/README.md`);
+      let readme = 'README not available';
+      if (readmeResponse.ok) {
+        readme = await readmeResponse.text();
+        // Truncate if too long
+        if (readme.length > 5000) {
+          readme = readme.substring(0, 5000) + '\n\n... (truncated)';
+        }
+      }
+      
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              name: repoData.name,
+              full_name: repoData.full_name,
+              description: repoData.description,
+              url: repoData.html_url,
+              stars: repoData.stargazers_count,
+              forks: repoData.forks_count,
+              open_issues: repoData.open_issues_count,
+              language: repoData.language,
+              created_at: repoData.created_at,
+              updated_at: repoData.updated_at,
+              pushed_at: repoData.pushed_at,
+              license: repoData.license?.name || 'No license',
+              topics: repoData.topics || [],
+              readme_preview: readme,
+              clone_url: repoData.clone_url,
+            }, null, 2),
+          },
+        ],
+      };
+    } catch (error) {
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              success: false,
+              error: error.message,
+              github_url,
+            }, null, 2),
+          },
+        ],
+      };
+    }
+  }
+
+  async handleBackup(args) {
+    const configPath = process.env.USERPROFILE + '\\.copilot\\mcp-config.json';
+    const fs = await import('fs/promises');
+    
+    try {
+      // Read current config
+      const configData = await fs.readFile(configPath, 'utf-8');
+      
+      // Create timestamped backup filename
+      const timestamp = new Date().toISOString().replace(/:/g, '-').replace(/\..+/, '');
+      const backupPath = process.env.USERPROFILE + `\\.copilot\\mcp-config.backup.${timestamp}.json`;
+      
+      // Write backup
+      await fs.writeFile(backupPath, configData, 'utf-8');
+      
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              success: true,
+              message: 'Config backup created successfully',
+              original_path: configPath,
+              backup_path: backupPath,
+              timestamp,
+              note: 'To restore, copy this backup file over the original config',
             }, null, 2),
           },
         ],
