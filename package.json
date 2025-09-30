@@ -1,0 +1,30 @@
+{
+  "name": "wx-gh-mcp-reg-tool",
+  "version": "1.0.0",
+  "description": "MCP server to search and install servers from the GitHub modelcontextprotocol/servers registry",
+  "type": "module",
+  "main": "index.js",
+  "bin": {
+    "wx-gh-mcp-reg-tool": "./index.js"
+  },
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "github",
+    "registry",
+    "copilot",
+    "cli"
+  ],
+  "author": "wxzrd21614",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "node-fetch": "^3.3.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
