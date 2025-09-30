@@ -217,15 +217,16 @@ class GitHubServersSearchServer {
   parseServers(readme) {
     const servers = [];
     
-    // Regular expression to match server entries in markdown list format
-    // Matches: • [Name](url) - Description
-    const serverRegex = /^•\s+\[([^\]]+)\]\(([^)]+)\)(?:\s*-\s*(.+))?$/gm;
+    // Updated regex to match new GitHub README format
+    // Matches: - **[Name](url)** - Description
+    // Also matches old format: • [Name](url) - Description
+    const serverRegex = /^[-•]\s+(?:\*\*)?(?:<img[^>]*>\s*)?\[([^\]]+)\]\(([^)]+)\)(?:\*\*)?\s*[-–—]\s*(.+)$/gm;
     
     let match;
     
     // Split by sections to identify official vs community
-    const officialSection = readme.match(/### 🎖️ Official Integrations([\s\S]*?)###/);
-    const communitySection = readme.match(/### 🌎 Community Servers([\s\S]*?)##\s+📚 Resources/);
+    const officialSection = readme.match(/### 🎖️ Official[^\n]*\n([\s\S]*?)(?=###|$)/);
+    const communitySection = readme.match(/### 🌎 Community Servers[^\n]*\n([\s\S]*?)(?=###|##\s+📚)/);
     
     if (officialSection) {
       let text = officialSection[1];
