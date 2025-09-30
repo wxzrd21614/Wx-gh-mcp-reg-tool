@@ -14,7 +14,7 @@ class GitHubServersSearchServer {
   constructor() {
     this.server = new Server(
       {
-        name: 'wx-gh-mcp-reg-tool',
+        name: 'wx-gh-registry',
         version: '1.0.0',
       },
       {
